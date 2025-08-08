@@ -1,5 +1,6 @@
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { supabase } from "../lib/supabase";
+import { loadAddressMap } from "../lib/addressMap";
 import { JOB_ADDRESS } from "../data/jobAddress";
 
 const isJobCode = (name) => /^BBN\.\d+$/.test(name);
@@ -7,13 +8,22 @@ const isJobCode = (name) => /^BBN\.\d+$/.test(name);
 export default function Reports() {
   const [tree, setTree] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [q, setQ] = useState(""); // ← search query
+  const [q, setQ] = useState("");
+  const [addrMap, setAddrMap] = useState({});
 
+  // Load address map (live + local fallback)
+  useEffect(() => {
+    (async () => {
+      const live = await loadAddressMap();
+      setAddrMap({ ...JOB_ADDRESS, ...live });
+    })();
+  }, []);
+
+  // Build Job → Category → Files
   useEffect(() => {
     async function load() {
       setLoading(true);
 
-      // 1) List top-level folders (only BBN.#### are jobs)
       const { data: topLevel, error: topErr } = await supabase
         .storage
         .from("reports")
@@ -29,7 +39,6 @@ export default function Reports() {
       const jobsOnly = (topLevel || []).filter((i) => isJobCode(i.name));
       const result = [];
 
-      // 2) For each job, list categories + files
       for (const job of jobsOnly) {
         const { data: cats, error: catsErr } = await supabase
           .storage
@@ -69,7 +78,7 @@ export default function Reports() {
 
         result.push({
           job: job.name,
-          address: JOB_ADDRESS[job.name] || "",
+          address: addrMap[job.name] || "",
           groups,
         });
       }
@@ -79,7 +88,7 @@ export default function Reports() {
     }
 
     load();
-  }, []);
+  }, [addrMap]); // refetch once addresses load so they render
 
   // Filter on job code, address, category, or filename
   const filtered = useMemo(() => {
@@ -87,7 +96,6 @@ export default function Reports() {
     if (!needle) return tree;
     return tree
       .map(({ job, address, groups }) => {
-        // filter files inside each category
         const filteredGroups = groups
           .map(({ category, files }) => ({
             category,
@@ -97,18 +105,11 @@ export default function Reports() {
                 category.toLowerCase().includes(needle)
             ),
           }))
-          .filter(
-            (g) =>
-              g.files.length > 0 ||
-              g.category.toLowerCase().includes(needle)
-          );
+          .filter((g) => g.files.length > 0);
 
-        // Keep a job if:
-        // - job code or address matches, OR
-        // - any group/files remain after filtering
         const jobMatches =
           job.toLowerCase().includes(needle) ||
-          address.toLowerCase().includes(needle);
+          (address || "").toLowerCase().includes(needle);
 
         if (jobMatches || filteredGroups.length > 0) {
           return { job, address, groups: filteredGroups };
@@ -123,7 +124,7 @@ export default function Reports() {
       <div className="flex items-center justify-between mb-6">
         <h2 className="text-2xl font-bold">All Reports</h2>
         <input
-          className="border p-2 rounded w-80"
+          className="border p-2 rounded w-96"
           placeholder="Search job code, address, category, or filename…"
           value={q}
           onChange={(e) => setQ(e.target.value)}
