@@ -4,51 +4,61 @@ import { supabase } from "../lib/supabase";
 
 export default function Login() {
   const [email, setEmail] = useState("");
-  const [sent, setSent] = useState(false);
-  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [message, setMessage] = useState("");
 
-  async function sendLink(e) {
+  async function handleLogin(e) {
     e.preventDefault();
-    setError("");
+    setLoading(true);
+    setMessage("");
+
     const { error } = await supabase.auth.signInWithOtp({
       email,
       options: {
-        // Adjust redirectTo if you’re using a custom domain
-        emailRedirectTo: `${window.location.origin}/#/client`,
+        emailRedirectTo: `${window.location.origin}/#/`,
       },
     });
-    if (error) setError(error.message);
-    else setSent(true);
+
+    if (error) {
+      setMessage(error.message);
+    } else {
+      setMessage("Check your email for a magic link to sign in.");
+    }
+
+    setLoading(false);
   }
 
   return (
-    <div className="bg-white rounded-2xl shadow-card p-6 max-w-md mx-auto">
-      <h1 className="text-2xl font-semibold mb-2">Login</h1>
-      <p className="text-subink mb-4">
-        Enter your email and we’ll send you a magic link.
-      </p>
+    <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4">
+      <div className="bg-white rounded-2xl shadow-card p-8 w-full max-w-md">
+        <h1 className="text-2xl font-semibold mb-4">Sign in to BBN</h1>
+        <p className="text-subink mb-6">
+          Enter your email and we'll send you a secure magic link.
+        </p>
 
-      {sent ? (
-        <div className="text-green-600">Check your email for the magic link.</div>
-      ) : (
-        <form onSubmit={sendLink} className="space-y-3">
+        <form onSubmit={handleLogin} className="space-y-4">
           <input
             type="email"
-            required
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            placeholder="you@company.com"
+            placeholder="you@example.com"
             className="block w-full rounded-lg border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent"
+            required
           />
-          {error && <div className="text-red-600 text-sm">{error}</div>}
+
           <button
             type="submit"
-            className="bg-accent text-white px-4 py-2 rounded-lg hover:opacity-90 transition"
+            disabled={loading}
+            className="w-full bg-accent text-white px-4 py-2 rounded-lg hover:opacity-90 transition disabled:opacity-50"
           >
-            Send magic link
+            {loading ? "Sending…" : "Send magic link"}
           </button>
         </form>
-      )}
+
+        {message && (
+          <p className="mt-4 text-sm text-subink text-center">{message}</p>
+        )}
+      </div>
     </div>
   );
 }
