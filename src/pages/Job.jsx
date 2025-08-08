@@ -3,12 +3,19 @@ import { useParams, Link } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 import { JOB_ADDRESS } from "../data/jobAddress";
 
-const CATEGORIES = [
+const LABELS = [
   "Clearance Reports",
   "Air Monitoring Reports",
   "Asbestos ID",
   "Asbestos Surveys",
 ];
+
+const slug = (s) =>
+  s.trim()
+    .replace(/[\\/]+/g, "-")
+    .replace(/\s+/g, " ")
+    .replace(/[^\w.\- ]+/g, "")
+    .replace(/\s/g, "-");
 
 export default function Job() {
   const { jobCode } = useParams();
@@ -20,21 +27,32 @@ export default function Job() {
       setLoading(true);
       const results = [];
 
-      for (const cat of CATEGORIES) {
-        const folderPath = `${jobCode}/${cat}`;
-        const { data: files } = await supabase.storage
-          .from("reports")
-          .list(folderPath, { limit: 1000, sortBy: { column: "name", order: "asc" } });
+      for (const label of LABELS) {
+        const paths = [
+          `${jobCode}/${label}`,        // space version
+          `${jobCode}/${slug(label)}`,  // hyphen version
+        ];
 
-        const items = (files || [])
-          .filter((f) => !f.name.endsWith("/"))
-          .map((f) => {
-            const fullPath = `${folderPath}/${f.name}`;
-            const { data } = supabase.storage.from("reports").getPublicUrl(fullPath);
-            return { name: f.name, path: fullPath, url: data.publicUrl };
-          });
+        let items = [];
 
-        results.push({ category: cat, files: items });
+        for (const folderPath of paths) {
+          const { data: files, error } = await supabase.storage
+            .from("reports")
+            .list(folderPath, { limit: 1000, sortBy: { column: "name", order: "asc" } });
+          if (error) continue;
+
+          items = items.concat(
+            (files || [])
+              .filter((f) => !f.name.endsWith("/"))
+              .map((f) => {
+                const fullPath = `${folderPath}/${f.name}`;
+                const { data } = supabase.storage.from("reports").getPublicUrl(fullPath);
+                return { name: f.name, path: fullPath, url: data.publicUrl };
+              })
+          );
+        }
+
+        results.push({ category: label, files: items });
       }
 
       setGroups(results);
