@@ -1,211 +1,153 @@
 // src/pages/Upload.jsx
-import { useState, useRef, useEffect } from "react";
+import { useState } from "react";
 import { supabase } from "../lib/supabase";
-import { saveAddress } from "../lib/addressMap";
-
-const CATEGORIES = [
-  "Clearance Reports",
-  "Air Monitoring Reports",
-  "Asbestos ID",
-  "Asbestos Surveys",
-];
-
-// Read prefill values from the URL hash (works with HashRouter: /#/?job=BBN.1234&category=...)
-function getPrefill() {
-  const hash = window.location.hash || "";
-  const qs = hash.includes("?") ? hash.split("?")[1] : "";
-  const p = new URLSearchParams(qs);
-  return {
-    job: p.get("job") || "",
-    category: p.get("category") || "",
-  };
-}
+import { useAuth } from "../lib/AuthContext";
 
 export default function Upload() {
-  const pre = getPrefill();
+  const { role } = useAuth();
+  const [jobCode, setJobCode] = useState("");
+  const [jobAddress, setJobAddress] = useState("");
+  const [category, setCategory] = useState("Clearance Reports");
+  const [files, setFiles] = useState([]);
+  const [uploading, setUploading] = useState(false);
+  const [status, setStatus] = useState([]);
 
-  const [jobCode, setJobCode] = useState(pre.job);         // e.g. BBN.4342
-  const [jobAddress, setJobAddress] = useState("");        // display address
-  const [category, setCategory] = useState(pre.category);  // one of CATEGORIES
-  const [files, setFiles] = useState([]);                  // File[]
-  const [progress, setProgress] = useState({});            // { filename: "uploading" | "done" | "error: ..." }
-  const [summary, setSummary] = useState("");              // summary text
-  const [busy, setBusy] = useState(false);
-  const dropRef = useRef(null);
+  const categories = [
+    "Clearance Reports",
+    "Air Monitoring Reports",
+    "Asbestos ID",
+    "Asbestos Surveys",
+  ];
 
-  // If hash changes while on the page (user navigates), re-prefill
-  useEffect(() => {
-    const onHash = () => {
-      const { job, category } = getPrefill();
-      if (job) setJobCode(job);
-      if (category) setCategory(category);
-    };
-    window.addEventListener("hashchange", onHash);
-    return () => window.removeEventListener("hashchange", onHash);
-  }, []);
-
-  function onChoose(e) {
-    setFiles(Array.from(e.target.files || []));
-    setSummary("");
-    setProgress({});
-  }
-
-  function onDrop(e) {
-    e.preventDefault();
-    const dropped = Array.from(e.dataTransfer.files || []);
-    setFiles(dropped);
-    setSummary("");
-    setProgress({});
-  }
-
-  function onDragOver(e) {
-    e.preventDefault();
-  }
-
-  function validateJob(code) {
-    return /^BBN\.\d+$/.test(code.trim());
+  // Restrict to admin/uploader roles
+  if (role !== "admin" && role !== "uploader") {
+    return (
+      <div className="bg-white rounded-2xl shadow-card p-6">
+        <h1 className="text-xl font-semibold mb-2">Access denied</h1>
+        <p className="text-subink">
+          You do not have permission to upload reports.  
+          Please contact BBN administration if you think this is a mistake.
+        </p>
+      </div>
+    );
   }
 
   async function handleUpload() {
-    const code = jobCode.trim();
-    const addr = jobAddress.trim();
-
-    if (!validateJob(code)) {
-      setSummary("Please enter a valid Job Code like: BBN.4342");
-      return;
-    }
-    if (!category) {
-      setSummary("Please choose a category.");
+    if (!jobCode.trim() || !jobAddress.trim()) {
+      alert("Please enter both a job code and address.");
       return;
     }
     if (files.length === 0) {
-      setSummary("Please select at least one PDF.");
+      alert("Please select at least one PDF file.");
       return;
     }
 
-    setBusy(true);
-    let ok = 0, bad = 0;
+    setUploading(true);
+    const newStatus = [];
 
-    // Upload files one by one to: reports/<JobCode>/<Category>/<filename>
-    for (const file of files) {
-      setProgress((p) => ({ ...p, [file.name]: "uploading" }));
+    for (let file of files) {
+      const fileName = file.name;
+      const path = `${jobCode} — ${jobAddress}/${category}/${fileName}`;
 
-      const path = `${code}/${category}/${file.name}`;
       const { error } = await supabase.storage
         .from("reports")
-        .upload(path, file, { upsert: true });
+        .upload(path, file, { upsert: false });
 
-      if (error) {
-        bad++;
-        setProgress((p) => ({ ...p, [file.name]: `error: ${error.message}` }));
-      } else {
-        ok++;
-        setProgress((p) => ({ ...p, [file.name]: "done" }));
-      }
+      newStatus.push({ name: fileName, status: error ? "error" : "done" });
     }
 
-    // Save/refresh the job address map (non-fatal if it fails)
-    try {
-      if (addr) await saveAddress(code, addr);
-    } catch (e) {
-      console.warn("Address map save failed (non-fatal):", e);
-    }
+    setStatus(newStatus);
+    setUploading(false);
+  }
 
-    setSummary(`Upload finished: ${ok} succeeded, ${bad} failed.`);
-    setBusy(false);
+  function handleFileChange(e) {
+    setFiles(Array.from(e.target.files));
   }
 
   return (
-    <div className="bg-card rounded-2xl shadow-card p-6 hover:shadow-cardHover transition max-w-3xl mx-auto">
-      <div className="mb-1 flex items-center justify-between">
-        <h2 className="text-2xl font-semibold text-ink">Add Reports</h2>
-      </div>
-      <p className="text-subink text-sm mb-6">
-        Upload one or many PDFs. Files are stored under the selected Job Code and Category.
-      </p>
+    <div className="bg-white rounded-2xl shadow-card p-6">
+      <h1 className="text-2xl font-semibold mb-4">Add Reports</h1>
 
-      {/* Job Code */}
-      <div className="mb-4">
-        <label className="block text-sm font-medium mb-1 text-ink">Job Code (e.g. BBN.4342)</label>
-        <input
-          className="border border-gray-200 rounded-lg px-3 py-2 w-full bg-white focus:outline-none focus:ring-2 focus:ring-accent"
-          placeholder="BBN.4342"
-          value={jobCode}
-          onChange={(e) => setJobCode(e.target.value)}
-        />
-        <p className="text-xs text-subink mt-1">Use the exact format: BBN.####</p>
-      </div>
+      {/* Job code */}
+      <label className="block mb-2 text-sm font-medium text-subink">
+        Job Code (e.g. BBN.4310)
+      </label>
+      <input
+        type="text"
+        value={jobCode}
+        onChange={(e) => setJobCode(e.target.value)}
+        className="mb-4 block w-full rounded-lg border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent"
+        placeholder="BBN.XXXX"
+      />
 
-      {/* Job Address */}
-      <div className="mb-4">
-        <label className="block text-sm font-medium mb-1 text-ink">Job Address</label>
-        <input
-          className="border border-gray-200 rounded-lg px-3 py-2 w-full bg-white focus:outline-none focus:ring-2 focus:ring-accent"
-          placeholder="55 Eden Ave, Coolangatta QLD 4225"
-          value={jobAddress}
-          onChange={(e) => setJobAddress(e.target.value)}
-        />
-        <p className="text-xs text-subink mt-1">
-          This will show as “BBN.#### — Address” on Jobs & Reports.
-        </p>
-      </div>
+      {/* Job address */}
+      <label className="block mb-2 text-sm font-medium text-subink">
+        Job Address
+      </label>
+      <input
+        type="text"
+        value={jobAddress}
+        onChange={(e) => setJobAddress(e.target.value)}
+        className="mb-4 block w-full rounded-lg border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent"
+        placeholder="123 Example Street, City, State, Postcode"
+      />
 
       {/* Category */}
-      <div className="mb-4">
-        <label className="block text-sm font-medium mb-1 text-ink">Category</label>
-        <select
-          className="border border-gray-200 rounded-lg px-3 py-2 w-full bg-white focus:outline-none focus:ring-2 focus:ring-accent"
-          value={category}
-          onChange={(e) => setCategory(e.target.value)}
-        >
-          <option value="">Select category…</option>
-          {CATEGORIES.map((c) => (
-            <option key={c} value={c}>{c}</option>
-          ))}
-        </select>
-      </div>
-
-      {/* Drag & Drop / Multi-file chooser */}
-      <div
-        ref={dropRef}
-        onDrop={onDrop}
-        onDragOver={onDragOver}
-        className="border-2 border-dashed rounded-xl p-6 text-center bg-white mb-4"
+      <label className="block mb-2 text-sm font-medium text-subink">
+        Category
+      </label>
+      <select
+        value={category}
+        onChange={(e) => setCategory(e.target.value)}
+        className="mb-4 block w-full rounded-lg border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent"
       >
-        <p className="mb-2 text-ink">Drag & drop PDFs here, or</p>
-        <label className="inline-block cursor-pointer bg-accent text-white px-4 py-2 rounded-lg hover:opacity-90 transition">
-          Choose files
-          <input type="file" accept="application/pdf" multiple className="hidden" onChange={onChoose} />
-        </label>
-        {files.length > 0 && (
-          <p className="text-sm text-subink mt-2">{files.length} file(s) selected</p>
-        )}
-      </div>
+        {categories.map((cat) => (
+          <option key={cat} value={cat}>
+            {cat}
+          </option>
+        ))}
+      </select>
 
+      {/* File input */}
+      <label className="block mb-2 text-sm font-medium text-subink">
+        Upload PDFs
+      </label>
+      <input
+        type="file"
+        accept="application/pdf"
+        multiple
+        onChange={handleFileChange}
+        className="mb-4"
+      />
+
+      {/* Upload button */}
       <button
         onClick={handleUpload}
-        disabled={busy}
-        className={`px-4 py-2 rounded-lg text-white transition ${busy ? "bg-gray-400 cursor-not-allowed" : "bg-accent hover:opacity-90"}`}
+        disabled={uploading}
+        className="bg-accent text-white px-4 py-2 rounded-lg hover:opacity-90 transition disabled:opacity-50"
       >
-        {busy ? "Uploading…" : "Upload"}
+        {uploading ? "Uploading..." : "Upload"}
       </button>
 
-      {/* Status list */}
-      {Object.keys(progress).length > 0 && (
-        <div className="mt-5">
-          <h3 className="font-semibold text-ink mb-2">Upload status</h3>
-          <ul className="space-y-1 text-sm">
-            {files.map((f) => (
-              <li key={f.name} className="flex justify-between border-b border-gray-100 py-1">
-                <span className="truncate pr-2">{f.name}</span>
-                <span className="text-subink">{progress[f.name]}</span>
+      {/* Upload status */}
+      {status.length > 0 && (
+        <div className="mt-6">
+          <h2 className="text-lg font-semibold mb-2">Upload status</h2>
+          <ul className="space-y-1">
+            {status.map((s, i) => (
+              <li
+                key={i}
+                className={`flex justify-between text-sm ${
+                  s.status === "done" ? "text-green-600" : "text-red-600"
+                }`}
+              >
+                <span>{s.name}</span>
+                <span>{s.status}</span>
               </li>
             ))}
           </ul>
         </div>
       )}
-
-      {summary && <div className="text-sm text-ink mt-3">{summary}</div>}
     </div>
   );
 }
