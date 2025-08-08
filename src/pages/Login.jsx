@@ -7,26 +7,32 @@ export default function Login() {
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
 
-  async function handleLogin(e) {
-    e.preventDefault();
-    setLoading(true);
-    setMessage("");
+async function handleSendLink(e) {
+  e.preventDefault();
+  setMessage("");
+  setError("");
 
-    const { error } = await supabase.auth.signInWithOtp({
-      email,
-      options: {
-        emailRedirectTo: `${window.location.origin}/#/`,
-      },
-    });
-
-    if (error) {
-      setMessage(error.message);
-    } else {
-      setMessage("Check your email for a magic link to sign in.");
-    }
-
-    setLoading(false);
+  if (!email.trim()) {
+    setError("Please enter your email.");
+    return;
   }
+
+  const redirectTo = `${window.location.origin}/#/client`; // after clicking the email link
+
+  const { error } = await supabase.auth.signInWithOtp({
+    email,
+    options: {
+      emailRedirectTo: redirectTo,
+    },
+  });
+
+  if (error) {
+    setError(error.message || "Something went wrong.");
+  } else {
+    setMessage("Check your inbox for a secure link.");
+  }
+}
+
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4">
