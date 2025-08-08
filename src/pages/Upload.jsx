@@ -1,5 +1,6 @@
 import { useState, useRef } from "react";
 import { supabase } from "../lib/supabase";
+import { saveAddress } from "../lib/addressMap";
 
 const CATEGORIES = [
   "Clearance Reports",
@@ -8,15 +9,12 @@ const CATEGORIES = [
   "Asbestos Surveys",
 ];
 
-// make folder names safe but keep the visible labels pretty
-const slug = (s) =>
-  s.trim().replace(/[\\/]+/g, "-").replace(/\s+/g, " ").replace(/[^\w.\- ]+/g, "").replace(/\s/g, "-");
-
 export default function Upload() {
-  const [jobCode, setJobCode] = useState("");      // e.g. BBN.4310
+  const [jobCode, setJobCode] = useState("");      // e.g. BBN.4342
+  const [jobAddress, setJobAddress] = useState(""); // full address
   const [category, setCategory] = useState("");
-  const [files, setFiles] = useState([]);          // File[]
-  const [progress, setProgress] = useState({});    // { filename: "queued"|"uploading"|"done"|"error:<msg>" }
+  const [files, setFiles] = useState([]);
+  const [progress, setProgress] = useState({});
   const [summary, setSummary] = useState("");
   const dropRef = useRef(null);
 
@@ -39,23 +37,33 @@ export default function Upload() {
   }
 
   async function handleUpload() {
-    if (!jobCode || !category || files.length === 0) {
-      setSummary("Please enter a Job Code, choose a Category, and select at least one file.");
+    const code = jobCode.trim();
+    const addr = jobAddress.trim();
+
+    // Must be in the format BBN.####, numbers after the dot
+    const isValid = /^BBN\.\d+$/.test(code);
+    if (!isValid) {
+      setSummary("Please enter a valid Job Code like: BBN.4342");
+      return;
+    }
+    if (!category) {
+      setSummary("Please choose a category.");
+      return;
+    }
+    if (files.length === 0) {
+      setSummary("Please select at least one PDF.");
       return;
     }
 
-    const safeJob = jobCode.trim(); // keep exact code in folder name
-    const safeCat = category; // allow spaces
-
-
     let ok = 0, bad = 0;
 
-    // Upload files one-by-one so we can show status
+    // upload each file under /<JobCode>/<Category>/<filename>
     for (const file of files) {
       setProgress((p) => ({ ...p, [file.name]: "uploading" }));
-
-      const path = `${safeJob}/${safeCat}/${file.name}`;
-      const { error } = await supabase.storage.from("reports").upload(path, file, { upsert: true });
+      const path = `${code}/${category}/${file.name}`;
+      const { error } = await supabase.storage
+        .from("reports")
+        .upload(path, file, { upsert: true });
 
       if (error) {
         bad++;
@@ -64,6 +72,13 @@ export default function Upload() {
         ok++;
         setProgress((p) => ({ ...p, [file.name]: "done" }));
       }
+    }
+
+    // Save/refresh the address map (so Jobs/Reports can show it)
+    try {
+      if (addr) await saveAddress(code, addr);
+    } catch (e) {
+      console.warn("Address map save failed (non-fatal):", e);
     }
 
     setSummary(`Upload finished: ${ok} succeeded, ${bad} failed.`);
@@ -75,14 +90,30 @@ export default function Upload() {
 
       {/* Job Code */}
       <div>
-        <label className="block text-sm font-medium mb-1">Job Code (e.g. BBN.4310)</label>
+        <label className="block text-sm font-medium mb-1">Job Code (e.g. BBN.4342)</label>
         <input
           className="border p-2 w-full rounded"
-          placeholder="BBN.4310"
+          placeholder="BBN.4342"
           value={jobCode}
           onChange={(e) => setJobCode(e.target.value)}
         />
-        <p className="text-xs text-gray-500 mt-1">This must match the job you want these reports to live under.</p>
+        <p className="text-xs text-gray-500 mt-1">
+          Files will be stored under this job code.
+        </p>
+      </div>
+
+      {/* Job Address */}
+      <div>
+        <label className="block text-sm font-medium mb-1">Job Address</label>
+        <input
+          className="border p-2 w-full rounded"
+          placeholder="55 Eden Ave, Coolangatta QLD 4225"
+          value={jobAddress}
+          onChange={(e) => setJobAddress(e.target.value)}
+        />
+        <p className="text-xs text-gray-500 mt-1">
+          This will appear as “BBN.#### — Address” on the Jobs & Reports pages.
+        </p>
       </div>
 
       {/* Category */}
@@ -140,8 +171,6 @@ export default function Upload() {
       )}
 
       {summary && <div className="text-sm mt-2">{summary}</div>}
-
-      {/* FYI: Client is always Demex in MVP (saved implicitly by folder + future DB) */}
     </div>
   );
 }
