@@ -45,7 +45,8 @@ export default function Upload() {
     }
 
     const safeJob = jobCode.trim(); // keep exact code in folder name
-    const safeCat = slug(category);
+    const safeCat = category; // allow spaces
+
 
     let ok = 0, bad = 0;
 
