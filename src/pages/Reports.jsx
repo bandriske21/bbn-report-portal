@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { supabase } from "../lib/supabase";
 import { JOB_ADDRESS } from "../data/jobAddress";
 
@@ -7,12 +7,13 @@ const isJobCode = (name) => /^BBN\.\d+$/.test(name);
 export default function Reports() {
   const [tree, setTree] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [q, setQ] = useState(""); // ← search query
 
   useEffect(() => {
     async function load() {
       setLoading(true);
 
-      // 1) List top-level folders (treat only BBN.#### as jobs)
+      // 1) List top-level folders (only BBN.#### are jobs)
       const { data: topLevel, error: topErr } = await supabase
         .storage
         .from("reports")
@@ -28,21 +29,17 @@ export default function Reports() {
       const jobsOnly = (topLevel || []).filter((i) => isJobCode(i.name));
       const result = [];
 
-      // 2) For each job, list categories
+      // 2) For each job, list categories + files
       for (const job of jobsOnly) {
         const { data: cats, error: catsErr } = await supabase
           .storage
           .from("reports")
           .list(job.name, { limit: 200, sortBy: { column: "name", order: "asc" } });
 
-        if (catsErr) {
-          console.error("Category list error:", catsErr);
-          continue;
-        }
+        if (catsErr) continue;
 
         const groups = [];
 
-        // 3) For each category, list files
         for (const c of cats || []) {
           const folderPath = `${job.name}/${c.name}`;
           const { data: files, error: filesErr } = await supabase
@@ -50,17 +47,19 @@ export default function Reports() {
             .from("reports")
             .list(folderPath, { limit: 1000, sortBy: { column: "name", order: "asc" } });
 
-          if (filesErr) {
-            console.error("Files list error:", filesErr);
-            continue;
-          }
+          if (filesErr) continue;
 
           const fileItems = (files || [])
             .filter((f) => !f.name.endsWith("/"))
             .map((f) => {
               const fullPath = `${folderPath}/${f.name}`;
               const { data } = supabase.storage.from("reports").getPublicUrl(fullPath);
-              return { name: f.name, path: fullPath, url: data.publicUrl };
+              return {
+                name: f.name,
+                path: fullPath,
+                url: data.publicUrl,
+                category: c.name,
+              };
             });
 
           if (fileItems.length) {
@@ -68,9 +67,11 @@ export default function Reports() {
           }
         }
 
-        if (groups.length) {
-          result.push({ job: job.name, address: JOB_ADDRESS[job.name] || "", groups });
-        }
+        result.push({
+          job: job.name,
+          address: JOB_ADDRESS[job.name] || "",
+          groups,
+        });
       }
 
       setTree(result);
@@ -80,15 +81,59 @@ export default function Reports() {
     load();
   }, []);
 
-  if (loading) return <p className="p-4">Loading…</p>;
+  // Filter on job code, address, category, or filename
+  const filtered = useMemo(() => {
+    const needle = q.trim().toLowerCase();
+    if (!needle) return tree;
+    return tree
+      .map(({ job, address, groups }) => {
+        // filter files inside each category
+        const filteredGroups = groups
+          .map(({ category, files }) => ({
+            category,
+            files: files.filter(
+              (f) =>
+                f.name.toLowerCase().includes(needle) ||
+                category.toLowerCase().includes(needle)
+            ),
+          }))
+          .filter(
+            (g) =>
+              g.files.length > 0 ||
+              g.category.toLowerCase().includes(needle)
+          );
+
+        // Keep a job if:
+        // - job code or address matches, OR
+        // - any group/files remain after filtering
+        const jobMatches =
+          job.toLowerCase().includes(needle) ||
+          address.toLowerCase().includes(needle);
+
+        if (jobMatches || filteredGroups.length > 0) {
+          return { job, address, groups: filteredGroups };
+        }
+        return null;
+      })
+      .filter(Boolean);
+  }, [q, tree]);
 
   return (
     <div className="max-w-4xl mx-auto bg-white p-6 rounded shadow">
-      <h2 className="text-2xl font-bold mb-6">All Reports</h2>
+      <div className="flex items-center justify-between mb-6">
+        <h2 className="text-2xl font-bold">All Reports</h2>
+        <input
+          className="border p-2 rounded w-80"
+          placeholder="Search job code, address, category, or filename…"
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+        />
+      </div>
 
-      {tree.length === 0 && <p>No reports found.</p>}
+      {loading && <p className="p-4">Loading…</p>}
+      {!loading && filtered.length === 0 && <p>No reports found.</p>}
 
-      {tree.map(({ job, address, groups }) => (
+      {filtered.map(({ job, address, groups }) => (
         <div key={job} className="mb-10">
           <h3 className="text-lg font-semibold mb-1">
             {job}{address ? ` — ${address}` : ""}
