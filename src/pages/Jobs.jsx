@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { supabase } from "../lib/supabase";
+import { JOB_ADDRESS } from "../data/jobAddress";
+
 
 export default function Jobs() {
   const [jobs, setJobs] = useState([]);
