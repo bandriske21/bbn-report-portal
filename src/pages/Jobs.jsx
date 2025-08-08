@@ -1,10 +1,8 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { supabase } from "../lib/supabase";
-import { JOB_ADDRESS } from "../data/jobAddress";
 import { loadAddressMap } from "../lib/addressMap";
-import { JOB_ADDRESS } from "../data/jobAddress"; // keep as a fallback/seed
-
+import { JOB_ADDRESS } from "../data/jobAddress";
 
 const isJobCode = (name) => /^BBN\.\d+$/.test(name);
 
@@ -12,7 +10,17 @@ export default function Jobs() {
   const [jobs, setJobs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [q, setQ] = useState("");
+  const [addrMap, setAddrMap] = useState({});
 
+  // Load address map (live + local fallback)
+  useEffect(() => {
+    (async () => {
+      const live = await loadAddressMap();
+      setAddrMap({ ...JOB_ADDRESS, ...live });
+    })();
+  }, []);
+
+  // Load job folders & counts
   useEffect(() => {
     async function load() {
       setLoading(true);
@@ -27,23 +35,25 @@ export default function Jobs() {
         return;
       }
 
-      const top = (data || []).filter(i => isJobCode(i.name)); // hide non-job folders
+      const top = (data || []).filter((i) => isJobCode(i.name));
 
-      // Count files under each job (optional but nice)
       const withCounts = await Promise.all(
         top.map(async (j) => {
           let total = 0;
-          const { data: cats } = await supabase.storage.from("reports").list(j.name, {
-            limit: 200,
-            sortBy: { column: "name", order: "asc" },
-          });
+          const { data: cats } = await supabase.storage
+            .from("reports")
+            .list(j.name, { limit: 200, sortBy: { column: "name", order: "asc" } });
+
           for (const c of cats || []) {
-            const { data: files } = await supabase.storage.from("reports").list(`${j.name}/${c.name}`, {
-              limit: 1000,
-              sortBy: { column: "name", order: "asc" },
-            });
-            total += (files || []).filter(f => !f.name.endsWith("/")).length;
+            const { data: files } = await supabase.storage
+              .from("reports")
+              .list(`${j.name}/${c.name}`, {
+                limit: 1000,
+                sortBy: { column: "name", order: "asc" },
+              });
+            total += (files || []).filter((f) => !f.name.endsWith("/")).length;
           }
+
           return { job: j.name, count: total };
         })
       );
@@ -54,10 +64,14 @@ export default function Jobs() {
     load();
   }, []);
 
-  const filtered = jobs.filter(({ job }) =>
-    job.toLowerCase().includes(q.toLowerCase()) ||
-    (JOB_ADDRESS[job]?.toLowerCase() || "").includes(q.toLowerCase())
-  );
+  const filtered = jobs.filter(({ job }) => {
+    const address = addrMap[job] || "";
+    const needle = q.toLowerCase();
+    return (
+      job.toLowerCase().includes(needle) ||
+      address.toLowerCase().includes(needle)
+    );
+  });
 
   return (
     <div className="max-w-4xl mx-auto bg-white p-6 rounded shadow">
@@ -79,7 +93,8 @@ export default function Jobs() {
           <div key={job} className="py-3 flex items-center justify-between">
             <div>
               <div className="font-semibold">
-                {job}{JOB_ADDRESS[job] ? ` — ${JOB_ADDRESS[job]}` : ""}
+                {job}
+                {addrMap[job] ? ` — ${addrMap[job]}` : ""}
               </div>
               <div className="text-sm text-gray-600">{count} file(s)</div>
             </div>
