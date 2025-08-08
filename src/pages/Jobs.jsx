@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 import { JOB_ADDRESS } from "../data/jobAddress";
 
+const isJobCode = (name) => /^BBN\.\d+$/.test(name);
 
 export default function Jobs() {
   const [jobs, setJobs] = useState([]);
@@ -12,7 +13,6 @@ export default function Jobs() {
   useEffect(() => {
     async function load() {
       setLoading(true);
-      // Top-level folders are job codes
       const { data, error } = await supabase.storage.from("reports").list("", {
         limit: 1000,
         sortBy: { column: "name", order: "asc" },
@@ -24,18 +24,18 @@ export default function Jobs() {
         return;
       }
 
-      // For each job folder, get a quick count of files beneath it
+      const top = (data || []).filter(i => isJobCode(i.name)); // hide non-job folders
+
+      // Count files under each job (optional but nice)
       const withCounts = await Promise.all(
-        (data || []).map(async (j) => {
+        top.map(async (j) => {
           let total = 0;
-          // list categories under the job
           const { data: cats } = await supabase.storage.from("reports").list(j.name, {
             limit: 200,
             sortBy: { column: "name", order: "asc" },
           });
           for (const c of cats || []) {
-            const folderPath = `${j.name}/${c.name}`;
-            const { data: files } = await supabase.storage.from("reports").list(folderPath, {
+            const { data: files } = await supabase.storage.from("reports").list(`${j.name}/${c.name}`, {
               limit: 1000,
               sortBy: { column: "name", order: "asc" },
             });
@@ -51,8 +51,9 @@ export default function Jobs() {
     load();
   }, []);
 
-  const filtered = jobs.filter(j =>
-    j.job.toLowerCase().includes(q.toLowerCase())
+  const filtered = jobs.filter(({ job }) =>
+    job.toLowerCase().includes(q.toLowerCase()) ||
+    (JOB_ADDRESS[job]?.toLowerCase() || "").includes(q.toLowerCase())
   );
 
   return (
@@ -60,8 +61,8 @@ export default function Jobs() {
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-2xl font-bold">Jobs</h2>
         <input
-          className="border p-2 rounded w-64"
-          placeholder="Search job code…"
+          className="border p-2 rounded w-80"
+          placeholder="Search job code or address…"
           value={q}
           onChange={(e) => setQ(e.target.value)}
         />
@@ -74,7 +75,9 @@ export default function Jobs() {
         {filtered.map(({ job, count }) => (
           <div key={job} className="py-3 flex items-center justify-between">
             <div>
-              <div className="font-semibold">{job}</div>
+              <div className="font-semibold">
+                {job}{JOB_ADDRESS[job] ? ` — ${JOB_ADDRESS[job]}` : ""}
+              </div>
               <div className="text-sm text-gray-600">{count} file(s)</div>
             </div>
             <Link
