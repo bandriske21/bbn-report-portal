@@ -120,33 +120,33 @@ export default function Reports() {
   }, [q, tree]);
 
   return (
-    <div className="max-w-4xl mx-auto bg-white p-6 rounded shadow">
+    <div className="bg-card rounded-2xl shadow-card p-6 hover:shadow-cardHover transition max-w-4xl mx-auto">
       <div className="flex items-center justify-between mb-6">
-        <h2 className="text-2xl font-bold">All Reports</h2>
+        <h2 className="text-2xl font-semibold text-ink">All Reports</h2>
         <input
-          className="border p-2 rounded w-96"
+          className="border border-gray-200 rounded-lg px-4 py-2 w-96 bg-white focus:outline-none focus:ring-2 focus:ring-accent"
           placeholder="Search job code, address, category, or filename…"
           value={q}
           onChange={(e) => setQ(e.target.value)}
         />
       </div>
 
-      {loading && <p className="p-4">Loading…</p>}
-      {!loading && filtered.length === 0 && <p>No reports found.</p>}
+      {loading && <p className="text-subink">Loading…</p>}
+      {!loading && filtered.length === 0 && <p className="text-subink">No reports found.</p>}
 
       {filtered.map(({ job, address, groups }) => (
         <div key={job} className="mb-10">
-          <h3 className="text-lg font-semibold mb-1">
+          <h3 className="text-lg font-semibold mb-1 text-ink">
             {job}{address ? ` — ${address}` : ""}
           </h3>
-          <div className="pl-4 border-l">
+          <div className="pl-4 border-l border-gray-100">
             {groups.map(({ category, files }) => (
               <section key={category} className="mb-4">
                 <div className="font-medium text-gray-700 mb-1">{category}</div>
                 {files.length === 0 ? (
-                  <p className="text-sm text-gray-600">No reports yet.</p>
+                  <p className="text-sm text-subink">No reports yet.</p>
                 ) : (
-                  <ul className="divide-y">
+                  <ul className="divide-y divide-gray-100">
                     {files.map((f) => (
                       <li key={f.path} className="py-2 flex justify-between">
                         <span className="truncate pr-4">{f.name}</span>
@@ -154,7 +154,7 @@ export default function Reports() {
                           href={f.url}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="text-blue-600 hover:underline"
+                          className="text-accent hover:opacity-80 transition"
                         >
                           Download
                         </a>
@@ -165,7 +165,7 @@ export default function Reports() {
               </section>
             ))}
           </div>
-          <hr className="mt-4" />
+          <hr className="mt-4 border-gray-100" />
         </div>
       ))}
     </div>
