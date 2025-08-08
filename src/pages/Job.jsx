@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import { supabase } from "../lib/supabase";
+import { JOB_ADDRESS } from "../data/jobAddress";
+
 
 const CATEGORIES = [
   "Clearance Reports",
