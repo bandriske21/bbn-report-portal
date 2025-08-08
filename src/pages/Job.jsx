@@ -3,7 +3,6 @@ import { useParams, Link } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 import { JOB_ADDRESS } from "../data/jobAddress";
 
-
 const CATEGORIES = [
   "Clearance Reports",
   "Air Monitoring Reports",
@@ -21,14 +20,11 @@ export default function Job() {
       setLoading(true);
       const results = [];
 
-      // For each category, list files under reports/<JOB>/<CATEGORY>
       for (const cat of CATEGORIES) {
         const folderPath = `${jobCode}/${cat}`;
-        const { data: files, error } = await supabase.storage
+        const { data: files } = await supabase.storage
           .from("reports")
           .list(folderPath, { limit: 1000, sortBy: { column: "name", order: "asc" } });
-
-        if (error) continue;
 
         const items = (files || [])
           .filter((f) => !f.name.endsWith("/"))
@@ -50,7 +46,9 @@ export default function Job() {
   return (
     <div className="max-w-4xl mx-auto bg-white p-6 rounded shadow">
       <div className="flex items-center justify-between mb-4">
-        <h2 className="text-2xl font-bold">Job: {jobCode}</h2>
+        <h2 className="text-2xl font-bold">
+          Job: {jobCode}{JOB_ADDRESS[jobCode] ? ` — ${JOB_ADDRESS[jobCode]}` : ""}
+        </h2>
         <Link to="/jobs" className="text-blue-600 hover:underline">← All Jobs</Link>
       </div>
 
@@ -68,12 +66,7 @@ export default function Job() {
                   {files.map((f) => (
                     <li key={f.path} className="py-2 flex justify-between">
                       <span className="truncate pr-4">{f.name}</span>
-                      <a
-                        href={f.url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-blue-600 hover:underline"
-                      >
+                      <a href={f.url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
                         Download
                       </a>
                     </li>
