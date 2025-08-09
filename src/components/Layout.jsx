@@ -6,6 +6,40 @@ import { supabase } from "../lib/supabase";
 import { useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "../lib/supabase";
+import { useAuth } from "../lib/AuthContext";
+
+function Header() {
+  const { user } = useAuth();
+
+  return (
+    <div className="ml-auto">
+      {user ? (
+        <div className="flex items-center gap-3">
+          <span className="text-sm text-subink truncate max-w-[220px]">
+            {user.email}
+          </span>
+          <button
+            className="rounded-lg border border-gray-300 px-3 py-1.5 hover:bg-gray-50"
+            onClick={async () => {
+              await supabase.auth.signOut();
+              window.location.hash = "/login";
+            }}
+          >
+            Logout
+          </button>
+        </div>
+      ) : (
+        <a
+          href="#/login"
+          className="rounded-lg bg-accent text-white px-4 py-2 hover:opacity-90"
+        >
+          Login
+        </a>
+      )}
+    </div>
+  );
+}
+
 
 export default function Layout({ children }) {
   const navigate = useNavigate();
