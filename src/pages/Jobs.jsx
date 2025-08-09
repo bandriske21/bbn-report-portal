@@ -2,17 +2,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { DESIGN_MODE } from "../lib/config";
-// import { supabase } from "../lib/supabase"; // enable later when DESIGN_MODE = false
+import { supabase } from "../lib/supabase";
 
-// ------- Mock data for Design Mode -------
-const INITIAL_MOCK_JOBS = [
-  { job: "BBN.4342", address: "55 Eden Ave, Coolangatta QLD 4225", count: 9 },
-  { job: "BBN.4391", address: "50 Meiers Rd, Indooroopilly QLD 4068", count: 3 },
-  { job: "BBN.4410", address: "309 North Quay, Brisbane QLD 4000", count: 18 },
-  { job: "BBN.4421", address: "3 Morse St, Newstead QLD 4006", count: 5 },
-];
-
-// Tiny inline icon so we don’t need another file
+// Tiny inline icon for the card
 function FolderIcon({ className = "w-9 h-9" }) {
   return (
     <svg viewBox="0 0 24 24" fill="currentColor" className={className} aria-hidden="true">
@@ -46,7 +38,7 @@ export default function Jobs() {
     }
   }, [location.search, navigate]);
 
-  // Load data (mock in design mode, otherwise Supabase later)
+  // Load jobs
   useEffect(() => {
     let cancelled = false;
 
@@ -54,28 +46,29 @@ export default function Jobs() {
       setLoading(true);
 
       if (DESIGN_MODE) {
-        // Simulate async/latency so we see the skeleton once
-        setTimeout(() => {
-          if (!cancelled) {
-            setJobs(INITIAL_MOCK_JOBS);
-            setLoading(false);
-          }
-        }, 250);
+        // Should be false now, but kept as a fallback
+        setJobs([
+          { job_code: "BBN.4342", address: "55 Eden Ave, Coolangatta QLD 4225", report_count: 9 },
+          { job_code: "BBN.4391", address: "50 Meiers Rd, Indooroopilly QLD 4068", report_count: 3 },
+        ]);
+        setLoading(false);
         return;
       }
 
-      // TODO (when DESIGN_MODE = false):
-      // const { data, error } = await supabase
-      //   .from("jobs") // or your jobs view/table
-      //   .select("job_code, address, report_count")
-      //   .order("job_code", { ascending: true });
-      // if (error) console.error(error);
-      // setJobs((data ?? []).map(r => ({
-      //   job: r.job_code,
-      //   address: r.address,
-      //   count: r.report_count || 0
-      // })));
-      // setLoading(false);
+      const { data, error } = await supabase
+        .from("jobs")
+        .select("job_code, address, report_count")
+        .order("job_code", { ascending: true });
+
+      if (!cancelled) {
+        if (error) {
+          console.error("[Jobs] load error", error);
+          setJobs([]);
+        } else {
+          setJobs(data ?? []);
+        }
+        setLoading(false);
+      }
     }
 
     load();
@@ -87,7 +80,7 @@ export default function Jobs() {
     const needle = q.toLowerCase();
     return jobs.filter(
       (j) =>
-        j.job.toLowerCase().includes(needle) ||
+        j.job_code.toLowerCase().includes(needle) ||
         j.address.toLowerCase().includes(needle)
     );
   }, [jobs, q]);
@@ -106,39 +99,40 @@ export default function Jobs() {
     setSaving(true);
     try {
       if (DESIGN_MODE) {
-        // Just add to our in-memory list
-        if (jobs.some((j) => j.job === job)) {
-          setError("That Job Code already exists in the list.");
-        } else {
-          const next = [{ job, address, count: 0 }, ...jobs];
-          setJobs(next);
-          setShowAdd(false);
-          setNewJobCode("");
-          setNewJobAddress("");
-        }
+        // Fallback; should not execute if DESIGN_MODE is false
+        const next = [{ job_code: job, address, report_count: 0 }, ...jobs];
+        setJobs(next);
+        setShowAdd(false);
+        setNewJobCode("");
+        setNewJobAddress("");
       } else {
-        // TODO (when DESIGN_MODE = false): insert into your jobs table
-        // const { error: insErr } = await supabase
-        //   .from("jobs")
-        //   .insert({ job_code: job, address });
-        // if (insErr) throw insErr;
-        // // Reload list after insert
-        // const { data, error } = await supabase
-        //   .from("jobs")
-        //   .select("job_code, address, report_count")
-        //   .order("job_code", { ascending: true });
-        // if (error) throw error;
-        // setJobs((data ?? []).map(r => ({
-        //   job: r.job_code,
-        //   address: r.address,
-        //   count: r.report_count || 0
-        // })));
-        // setShowAdd(false);
-        // setNewJobCode("");
-        // setNewJobAddress("");
+        const { error: insErr } = await supabase
+          .from("jobs")
+          .insert({ job_code: job, address });
+
+        if (insErr) throw insErr;
+
+        // Reload list
+        const { data, error: loadErr } = await supabase
+          .from("jobs")
+          .select("job_code, address, report_count")
+          .order("job_code", { ascending: true });
+
+        if (loadErr) throw loadErr;
+
+        setJobs(data ?? []);
+        setShowAdd(false);
+        setNewJobCode("");
+        setNewJobAddress("");
       }
     } catch (err) {
-      setError(err.message || "Failed to save job.");
+      console.error("[Jobs] save error", err);
+      // Handle duplicate job_code nicely
+      if (String(err.message).toLowerCase().includes("duplicate")) {
+        setError("That Job Code already exists.");
+      } else {
+        setError(err.message || "Failed to save job.");
+      }
     } finally {
       setSaving(false);
     }
@@ -195,13 +189,13 @@ export default function Jobs() {
         <div className="mt-8 text-subink">No jobs found.</div>
       ) : (
         <div className="mt-4 space-y-3">
-          {filtered.map(({ job, address, count }) => (
+          {filtered.map(({ job_code, address, report_count }) => (
             <JobCard
-              key={job}
-              job={job}
+              key={job_code}
+              job={job_code}
               address={address}
-              count={count}
-              to={`/jobs/${encodeURIComponent(job)}`}
+              count={report_count || 0}
+              to={`/jobs/${encodeURIComponent(job_code)}`}
             />
           ))}
         </div>
