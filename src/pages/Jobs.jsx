@@ -36,7 +36,7 @@ export default function Jobs() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
-  // Open modal if ?add=1 is present
+  // Open modal if ?add=1 is present (from sidebar "+ Add Job")
   useEffect(() => {
     const sp = new URLSearchParams(location.search);
     if (sp.get("add") === "1") {
@@ -64,13 +64,17 @@ export default function Jobs() {
         return;
       }
 
-      // TODO: When DESIGN_MODE = false, uncomment and fetch real data.
+      // TODO (when DESIGN_MODE = false):
       // const { data, error } = await supabase
       //   .from("jobs") // or your jobs view/table
       //   .select("job_code, address, report_count")
       //   .order("job_code", { ascending: true });
       // if (error) console.error(error);
-      // setJobs((data ?? []).map(r => ({ job: r.job_code, address: r.address, count: r.report_count || 0 })));
+      // setJobs((data ?? []).map(r => ({
+      //   job: r.job_code,
+      //   address: r.address,
+      //   count: r.report_count || 0
+      // })));
       // setLoading(false);
     }
 
@@ -113,13 +117,25 @@ export default function Jobs() {
           setNewJobAddress("");
         }
       } else {
-        // TODO: When DESIGN_MODE = false, insert into your jobs table
+        // TODO (when DESIGN_MODE = false): insert into your jobs table
         // const { error: insErr } = await supabase
         //   .from("jobs")
         //   .insert({ job_code: job, address });
         // if (insErr) throw insErr;
-        // Reload list after insert
-        // ...
+        // // Reload list after insert
+        // const { data, error } = await supabase
+        //   .from("jobs")
+        //   .select("job_code, address, report_count")
+        //   .order("job_code", { ascending: true });
+        // if (error) throw error;
+        // setJobs((data ?? []).map(r => ({
+        //   job: r.job_code,
+        //   address: r.address,
+        //   count: r.report_count || 0
+        // })));
+        // setShowAdd(false);
+        // setNewJobCode("");
+        // setNewJobAddress("");
       }
     } catch (err) {
       setError(err.message || "Failed to save job.");
