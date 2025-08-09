@@ -1,11 +1,69 @@
 // src/pages/Job.jsx
-import { useEffect, useState } from "react";
-import { useParams, Link } from "react-router-dom";
-import { supabase } from "../lib/supabase";
-import { JOB_ADDRESS } from "../data/jobAddress";
-import { loadAddressMap } from "../lib/addressMap";
-import { useAuth } from "../lib/AuthContext";
-import Skeleton from "../components/Skeleton";
+import { useEffect, useMemo, useState } from "react";
+import { Link, useParams, useNavigate } from "react-router-dom";
+import { DESIGN_MODE } from "../lib/config";
+// import { supabase } from "../lib/supabase"; // enable later when DESIGN_MODE = false
+
+// --- The same jobs list we showed on /jobs (so we can match meta) ---
+const MOCK_JOBS = [
+  {
+    job: "BBN.4342",
+    address: "55 Eden Ave, Coolangatta QLD 4225",
+    count: 9,
+  },
+  {
+    job: "BBN.4391",
+    address: "50 Meiers Rd, Indooroopilly QLD 4068",
+    count: 3,
+  },
+  {
+    job: "BBN.4410",
+    address: "309 North Quay, Brisbane QLD 4000",
+    count: 18,
+  },
+  {
+    job: "BBN.4421",
+    address: "3 Morse St, Newstead QLD 4006",
+    count: 5,
+  },
+];
+
+// --- Mock files per job/category (you can add more demo names if you want) ---
+const MOCK_FILES = {
+  "BBN.4342": {
+    "Clearance Reports": [
+      { name: "BBN.4342_CL_01.pdf" },
+      { name: "BBN.4342_CL_02.pdf" },
+    ],
+    "Air Monitoring Reports": [
+      { name: "BBN.4342_AM_01.pdf" },
+      { name: "BBN.4342_AM_02.pdf" },
+      { name: "BBN.4342_AM_03.pdf" },
+    ],
+    "Asbestos ID": [],
+    "Asbestos Surveys": [],
+  },
+  "BBN.4391": {
+    "Clearance Reports": [{ name: "BBN.4391_CL_01.pdf" }],
+    "Air Monitoring Reports": [],
+    "Asbestos ID": [],
+    "Asbestos Surveys": [{ name: "BBN.4391_SV_01.pdf" }],
+  },
+  "BBN.4410": {
+    "Clearance Reports": [],
+    "Air Monitoring Reports": Array.from({ length: 6 }).map((_, i) => ({
+      name: `BBN.4410_AM_${String(i + 1).padStart(2, "0")}.pdf`,
+    })),
+    "Asbestos ID": [],
+    "Asbestos Surveys": [],
+  },
+  "BBN.4421": {
+    "Clearance Reports": [],
+    "Air Monitoring Reports": [],
+    "Asbestos ID": [{ name: "BBN.4421_ID_01.pdf" }],
+    "Asbestos Surveys": [],
+  },
+};
 
 const CATEGORIES = [
   "Clearance Reports",
@@ -14,153 +72,157 @@ const CATEGORIES = [
   "Asbestos Surveys",
 ];
 
-// Simple slug for back-compat (Air Monitoring Reports -> Air-Monitoring-Reports)
-const slug = (s) =>
-  s.trim()
-    .replace(/[\\/]+/g, "-")
-    .replace(/\s+/g, " ")
-    .replace(/[^\w.\- ]+/g, "")
-    .replace(/\s/g, "-");
-
 export default function Job() {
   const { jobCode } = useParams();
-  const { role } = useAuth();
-  const canUpload = role === "admin" || role === "uploader";
+  const navigate = useNavigate();
 
-  const [addrMap, setAddrMap] = useState({});
-  const [groups, setGroups] = useState([]); // [{ category, files: [{name, url, path}] }]
   const [loading, setLoading] = useState(true);
+  const [meta, setMeta] = useState(null); // { job, address, count }
+  const [filesByCategory, setFilesByCategory] = useState({});
 
-  // Load latest address map (live JSON merged with local fallback)
+  // Load either mock (DESIGN_MODE) or real
   useEffect(() => {
-    (async () => {
-      const live = await loadAddressMap();
-      setAddrMap({ ...JOB_ADDRESS, ...live });
-    })();
-  }, []);
+    let cancelled = false;
 
-  // Fetch files for each category (check both space + hyphen folder names)
-  useEffect(() => {
     async function load() {
       setLoading(true);
-      const results = [];
 
-      for (const label of CATEGORIES) {
-        const folderCandidates = [
-          `${jobCode}/${label}`,         // space version
-          `${jobCode}/${slug(label)}`,   // hyphen version
-        ];
-
-        let items = [];
-
-        for (const folderPath of folderCandidates) {
-          const { data: files, error } = await supabase.storage
-            .from("reports")
-            .list(folderPath, { limit: 1000, sortBy: { column: "name", order: "asc" } });
-
-          if (error) continue;
-
-          items = items.concat(
-            (files || [])
-              .filter((f) => !f.name.endsWith("/"))
-              .map((f) => {
-                const fullPath = `${folderPath}/${f.name}`;
-
-                // Public URL (quick). For extra security later, switch to createSignedUrl().
-                const { data } = supabase.storage.from("reports").getPublicUrl(fullPath);
-                return { name: f.name, path: fullPath, url: data.publicUrl };
-              })
-          );
-        }
-
-        results.push({ category: label, files: items });
+      if (DESIGN_MODE) {
+        // Simulate a tiny delay to show skeletons
+        setTimeout(() => {
+          if (cancelled) return;
+          const job = decodeURIComponent(jobCode || "");
+          const m = MOCK_JOBS.find((j) => j.job === job);
+          if (!m) {
+            // If someone typed a wrong URL, go back to jobs
+            navigate("/jobs", { replace: true });
+            return;
+          }
+          setMeta(m);
+          setFilesByCategory(MOCK_FILES[job] || {});
+          setLoading(false);
+        }, 250);
+        return;
       }
 
-      setGroups(results);
-      setLoading(false);
+      // TODO: When DESIGN_MODE = false
+      // 1) look up job meta (job, address, count) from your table/view
+      // 2) list the files in Supabase Storage for each category path
+      //    `${job} — ${address}/<Category>/...`
+      // setMeta({ ... });
+      // setFilesByCategory({ ... });
+      // setLoading(false);
     }
+
     load();
-  }, [jobCode]);
+    return () => (cancelled = true);
+  }, [jobCode, navigate]);
+
+  const title = useMemo(() => {
+    if (meta) return `${meta.job} — ${meta.address}`;
+    return "Loading…";
+  }, [meta]);
 
   return (
     <div className="relative">
-      <div className="bg-card rounded-2xl shadow-card p-6 hover:shadow-cardHover transition max-w-5xl mx-auto">
-        <div className="flex items-center justify-between mb-1">
-          <h2 className="text-2xl font-semibold text-ink">
-            Job: {jobCode}{addrMap[jobCode] ? ` — ${addrMap[jobCode]}` : ""}
-          </h2>
-          <Link to="/jobs" className="text-accent hover:opacity-80 transition">
-            ← All Jobs
-          </Link>
-        </div>
-        <p className="text-subink text-sm mb-6">
-          Browse this job’s report folders. {canUpload ? "Add reports directly to a category." : "Download the files you need."}
+      {/* Back + title */}
+      <div className="flex items-center justify-between mb-4">
+        <Link
+          to="/jobs"
+          className="inline-flex items-center gap-2 text-blue-600 hover:text-blue-700"
+        >
+          ← All Jobs
+        </Link>
+        {/* Floating Add Reports CTA (optional) */}
+        <Link
+          to="/"
+          className="hidden sm:inline-block rounded-full bg-accent text-white px-4 py-2 hover:opacity-90 transition"
+          title="Add reports"
+        >
+          Add Reports
+        </Link>
+      </div>
+
+      <div className="bg-white rounded-2xl shadow-card p-6">
+        <h2 className="text-2xl font-semibold text-ink">{title}</h2>
+        <p className="text-sm text-subink mt-1">
+          Reports grouped into categories. Click “Download” to fetch a file.
         </p>
 
         {loading ? (
-          <Skeleton rows={6} />
+          <SkeletonCategories />
         ) : (
-          <div className="space-y-6">
-            {groups.map(({ category, files }) => (
-              <section key={category} className="bg-white border border-gray-100 rounded-xl p-4">
-                <div className="flex items-center justify-between mb-2">
-                  <div className="font-medium text-gray-800">{category}</div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs bg-gray-100 text-gray-700 px-2 py-1 rounded-full">
-                      {files.length} file(s)
-                    </span>
-                    {canUpload && (
-                      <a
-                        href={`/#/?job=${encodeURIComponent(jobCode)}&category=${encodeURIComponent(category)}`}
-                        className="text-accent text-sm hover:opacity-80"
-                      >
-                        Add here →
-                      </a>
-                    )}
-                  </div>
-                </div>
-
-                {files.length === 0 ? (
-                  <p className="text-sm text-subink">No reports yet.</p>
-                ) : (
-                  <ul className="divide-y divide-gray-100">
-                    {files.map((f) => (
-                      <li key={f.path} className="py-2 flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          {/* Minimal file icon */}
-                          <svg width="18" height="18" viewBox="0 0 24 24" className="text-accent">
-                            <path fill="currentColor" d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path fill="currentColor" d="M14 2v6h6"/>
-                          </svg>
-                          <span className="truncate pr-4">{f.name}</span>
-                        </div>
-                        <a
-                          href={f.url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-accent hover:opacity-80 transition"
-                        >
-                          Download
-                        </a>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </section>
+          <div className="mt-6 space-y-8">
+            {CATEGORIES.map((cat) => (
+              <CategorySection
+                key={cat}
+                title={cat}
+                files={filesByCategory[cat] || []}
+              />
             ))}
           </div>
         )}
       </div>
+    </div>
+  );
+}
 
-      {/* Floating Add Reports button (only BBN staff) */}
-      {canUpload && (
-        <a
-          href={`/#/?job=${encodeURIComponent(jobCode)}`}
-          className="fixed bottom-6 right-6 rounded-full px-5 py-3 bg-accent text-white shadow-cardHover hover:opacity-90 transition"
-          title="Add Reports"
-        >
-          + Add Reports
-        </a>
+function CategorySection({ title, files }) {
+  return (
+    <section>
+      <h3 className="text-xl font-semibold text-ink mb-3">{title}</h3>
+
+      {files.length === 0 ? (
+        <div className="text-subink">No reports yet.</div>
+      ) : (
+        <div className="rounded-xl border border-gray-200 divide-y bg-white">
+          {files.map((f, idx) => (
+            <div
+              key={`${f.name}-${idx}`}
+              className="flex items-center justify-between gap-4 px-4 py-3"
+            >
+              <div className="min-w-0">
+                <div className="text-sm font-medium text-ink truncate">
+                  {f.name}
+                </div>
+              </div>
+              {/* Download button.
+                  In Design Mode we just prevent default.
+                  Later we’ll set actual signed URLs from Supabase. */}
+              <a
+                href="#"
+                onClick={(e) => e.preventDefault()}
+                className="text-blue-600 hover:text-blue-700 text-sm"
+              >
+                Download
+              </a>
+            </div>
+          ))}
+        </div>
       )}
+    </section>
+  );
+}
+
+function SkeletonCategories() {
+  return (
+    <div className="mt-6 space-y-8">
+      {[0, 1, 2, 3].map((i) => (
+        <div key={i}>
+          <div className="h-5 w-48 bg-gray-200 rounded mb-3 animate-pulse" />
+          <div className="rounded-xl border border-gray-200">
+            {[0, 1, 2].map((j) => (
+              <div
+                key={j}
+                className="flex items-center justify-between gap-4 px-4 py-3 animate-pulse"
+              >
+                <div className="h-4 w-64 bg-gray-200 rounded" />
+                <div className="h-4 w-20 bg-gray-200 rounded" />
+              </div>
+            ))}
+          </div>
+        </div>
+      ))}
     </div>
   );
 }
