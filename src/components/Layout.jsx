@@ -2,6 +2,37 @@
 import { Link, useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "../lib/AuthContext";
 import { supabase } from "../lib/supabase";
+// in src/components/Layout.jsx
+import { useEffect } from "react";
+import { useNavigate } from "react-router-dom";
+import { supabase } from "../lib/supabase";
+
+export default function Layout({ children }) {
+  const navigate = useNavigate();
+
+  // GLOBAL TOKEN CONSUMER: runs on every route once
+  useEffect(() => {
+    const hash = window.location.hash.startsWith("#")
+      ? window.location.hash.slice(1)
+      : "";
+    const qp = new URLSearchParams(hash);
+    const access_token = qp.get("access_token");
+    const refresh_token = qp.get("refresh_token");
+
+    async function consume() {
+      if (access_token && refresh_token) {
+        await supabase.auth.setSession({ access_token, refresh_token });
+        // Clean the URL & send user into app
+        window.history.replaceState({}, "", `${window.location.origin}/#/client`);
+        navigate("/client", { replace: true });
+      }
+    }
+    consume();
+  }, [navigate]);
+
+  // ...rest of your layout (header/sidebar/etc)
+}
+
 
 function NavLink({ to, label, active }) {
   return (
