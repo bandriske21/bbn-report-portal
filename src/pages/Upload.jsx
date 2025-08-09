@@ -11,7 +11,7 @@ const CATEGORIES = [
 ];
 
 export default function Upload() {
-  const { role, loading } = useAuth();
+  const { user } = useAuth();
   const [jobCode, setJobCode] = useState("");
   const [jobAddress, setJobAddress] = useState("");
   const [category, setCategory] = useState(CATEGORIES[0]);
@@ -19,41 +19,13 @@ export default function Upload() {
   const [uploading, setUploading] = useState(false);
   const [status, setStatus] = useState([]);
 
-  // Prefill from query params: ?job=BBN.4342 — 55 Eden Ave&category=Air Monitoring Reports
-  const searchParams = useMemo(() => new URLSearchParams(window.location.hash.split("?")[1] || ""), []);
-  useEffect(() => {
-    const qpJob = searchParams.get("job") || "";
-    const qpCategory = searchParams.get("category") || "";
-
-    if (qpJob) {
-      // Accept either "BBN.4342 — Address" or just "BBN.4342"
-      const parts = qpJob.split("—");
-      setJobCode(parts[0].trim());
-      if (parts[1]) setJobAddress(parts.slice(1).join("—").trim());
-    }
-    if (qpCategory && CATEGORIES.includes(qpCategory)) {
-      setCategory(qpCategory);
-    }
-  }, [searchParams]);
-
-  // While auth/profile is loading, show a gentle placeholder
-  if (loading) {
+  // If not signed in, block with a friendly message
+  if (!user) {
     return (
       <div className="bg-white rounded-2xl shadow-card p-6">
-        <h1 className="text-2xl font-semibold mb-2">Add Reports</h1>
-        <p className="text-subink">Checking permissions…</p>
-      </div>
-    );
-  }
-
-  // Role-gated access
-  if (role !== "admin" && role !== "uploader") {
-    return (
-      <div className="bg-white rounded-2xl shadow-card p-6">
-        <h1 className="text-xl font-semibold mb-2">Access denied</h1>
+        <h1 className="text-2xl font-semibold mb-2">Sign in required</h1>
         <p className="text-subink">
-          You do not have permission to upload reports. Please contact BBN
-          administration if you believe this is an error.
+          Please log in with your whitelisted email to upload reports.
         </p>
       </div>
     );
@@ -78,15 +50,19 @@ export default function Upload() {
     const results = [];
 
     for (const file of files) {
+      const safeJob = jobCode.trim();
       const safeAddress = jobAddress.trim();
-      const baseFolder = `${jobCode.trim()} — ${safeAddress}`;
-      const path = `${baseFolder}/${category}/${file.name}`;
+      const path = `${safeJob} — ${safeAddress}/${category}/${file.name}`;
 
       const { error } = await supabase.storage
         .from("reports")
         .upload(path, file, { upsert: false });
 
-      results.push({ name: file.name, status: error ? "error" : "done", error });
+      results.push({
+        name: file.name,
+        status: error ? "error" : "done",
+        error: error?.message || null,
+      });
     }
 
     setStatus(results);
@@ -152,7 +128,7 @@ export default function Upload() {
         className="mb-4"
       />
 
-      {/* Upload button */}
+      {/* Upload */}
       <button
         onClick={handleUpload}
         disabled={uploading}
@@ -161,7 +137,7 @@ export default function Upload() {
         {uploading ? "Uploading…" : "Upload"}
       </button>
 
-      {/* Status */}
+      {/* Status list */}
       {status.length > 0 && (
         <div className="mt-6">
           <h2 className="text-lg font-semibold mb-2">Upload status</h2>
@@ -174,10 +150,7 @@ export default function Upload() {
                 }`}
               >
                 <span className="truncate pr-4">{s.name}</span>
-                <span>
-                  {s.status}
-                  {s.error?.message ? ` – ${s.error.message}` : ""}
-                </span>
+                <span>{s.status}{s.error ? ` — ${s.error}` : ""}</span>
               </li>
             ))}
           </ul>
