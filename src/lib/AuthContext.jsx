@@ -2,20 +2,21 @@
 import { createContext, useContext, useEffect, useState } from "react";
 import { supabase } from "./supabase";
 
-const AuthContext = createContext(null);
+const AuthContext = createContext({ user: null, role: "client", loading: true });
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [role, setRole] = useState("client");
   const [loading, setLoading] = useState(true);
 
-  async function loadProfile(userId) {
+  async function loadRole(userId) {
     try {
       const { data, error } = await supabase
         .from("profiles")
         .select("role")
         .eq("user_id", userId)
         .single();
+
       if (error) throw error;
       setRole(data?.role || "client");
     } catch {
@@ -26,19 +27,23 @@ export function AuthProvider({ children }) {
   useEffect(() => {
     let mounted = true;
 
-    // Restore on first load
+    // Restore session on load
     supabase.auth.getSession().then(async ({ data }) => {
       if (!mounted) return;
       const session = data.session;
       setUser(session?.user ?? null);
-      if (session?.user?.id) await loadProfile(session.user.id);
+      if (session?.user?.id) await loadRole(session.user.id);
       setLoading(false);
+
+      // Simple debug
+      console.log("[Auth] initial session", session);
     });
 
-    // Subscribe to auth changes
-    const { data: sub } = supabase.auth.onAuthStateChange(async (_event, session) => {
+    // Listen for auth changes
+    const { data: sub } = supabase.auth.onAuthStateChange(async (_evt, session) => {
+      console.log("[Auth] onAuthStateChange", _evt, session);
       setUser(session?.user ?? null);
-      if (session?.user?.id) await loadProfile(session.user.id);
+      if (session?.user?.id) await loadRole(session.user.id);
     });
 
     return () => {
