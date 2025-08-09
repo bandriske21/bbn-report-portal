@@ -1,296 +1,185 @@
 // src/pages/Jobs.jsx
 import { useEffect, useMemo, useState } from "react";
-import { Link, useLocation, useNavigate } from "react-router-dom";
-import { DESIGN_MODE } from "../lib/config";
+import { Link } from "react-router-dom";
 import { supabase } from "../lib/supabase";
-
-// Tiny inline icon for the card
-function FolderIcon({ className = "w-9 h-9" }) {
-  return (
-    <svg viewBox="0 0 24 24" fill="currentColor" className={className} aria-hidden="true">
-      <path d="M10.5 6H5.75A1.75 1.75 0 004 7.75v8.5c0 .966.784 1.75 1.75 1.75h12.5A1.75 1.75 0 0020 16.25v-6.5A1.75 1.75 0 0018.25 8H12l-.707-.707A2 2 0 0010.5 6z" />
-    </svg>
-  );
-}
+import { useAuth } from "../lib/AuthContext";
+import Skeleton from "../components/Skeleton";
 
 export default function Jobs() {
-  const location = useLocation();
-  const navigate = useNavigate();
-
+  const { user } = useAuth();
   const [jobs, setJobs] = useState([]);
-  const [q, setQ] = useState("");
   const [loading, setLoading] = useState(true);
-
-  // Modal state
+  const [q, setQ] = useState("");
   const [showAdd, setShowAdd] = useState(false);
-  const [newJobCode, setNewJobCode] = useState("");
-  const [newJobAddress, setNewJobAddress] = useState("");
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState("");
 
-  // Open modal if ?add=1 is present (from sidebar "+ Add Job")
-  useEffect(() => {
-    const sp = new URLSearchParams(location.search);
-    if (sp.get("add") === "1") {
-      setShowAdd(true);
-      // Clean URL after opening the modal
-      navigate("/jobs", { replace: true });
+  async function loadJobs() {
+    setLoading(true);
+    const { data, error } = await supabase
+      .from("jobs")
+      .select("id, job_code, address, created_at")
+      .order("created_at", { ascending: false });
+
+    if (error) {
+      alert(`Failed to load jobs: ${error.message}`);
+    } else {
+      setJobs(data || []);
     }
-  }, [location.search, navigate]);
+    setLoading(false);
+  }
 
-  // Load jobs
   useEffect(() => {
-    let cancelled = false;
-
-    async function load() {
-      setLoading(true);
-
-      if (DESIGN_MODE) {
-        // Should be false now, but kept as a fallback
-        setJobs([
-          { job_code: "BBN.4342", address: "55 Eden Ave, Coolangatta QLD 4225", report_count: 9 },
-          { job_code: "BBN.4391", address: "50 Meiers Rd, Indooroopilly QLD 4068", report_count: 3 },
-        ]);
-        setLoading(false);
-        return;
-      }
-
-      const { data, error } = await supabase
-        .from("jobs")
-        .select("job_code, address, report_count")
-        .order("job_code", { ascending: true });
-
-      if (!cancelled) {
-        if (error) {
-          console.error("[Jobs] load error", error);
-          setJobs([]);
-        } else {
-          setJobs(data ?? []);
-        }
-        setLoading(false);
-      }
-    }
-
-    load();
-    return () => (cancelled = true);
+    loadJobs();
   }, []);
 
   const filtered = useMemo(() => {
-    if (!q.trim()) return jobs;
-    const needle = q.toLowerCase();
+    const t = q.trim().toLowerCase();
+    if (!t) return jobs;
     return jobs.filter(
       (j) =>
-        j.job_code.toLowerCase().includes(needle) ||
-        j.address.toLowerCase().includes(needle)
+        j.job_code.toLowerCase().includes(t) ||
+        j.address.toLowerCase().includes(t)
     );
   }, [jobs, q]);
 
-  async function handleSaveJob(e) {
-    e?.preventDefault?.();
-    setError("");
-
-    const job = newJobCode.trim();
-    const address = newJobAddress.trim();
-    if (!job || !address) {
-      setError("Please enter both a Job Code and an Address.");
-      return;
-    }
-
-    setSaving(true);
-    try {
-      if (DESIGN_MODE) {
-        // Fallback; should not execute if DESIGN_MODE is false
-        const next = [{ job_code: job, address, report_count: 0 }, ...jobs];
-        setJobs(next);
-        setShowAdd(false);
-        setNewJobCode("");
-        setNewJobAddress("");
-      } else {
-        const { error: insErr } = await supabase
-          .from("jobs")
-          .insert({ job_code: job, address });
-
-        if (insErr) throw insErr;
-
-        // Reload list
-        const { data, error: loadErr } = await supabase
-          .from("jobs")
-          .select("job_code, address, report_count")
-          .order("job_code", { ascending: true });
-
-        if (loadErr) throw loadErr;
-
-        setJobs(data ?? []);
-        setShowAdd(false);
-        setNewJobCode("");
-        setNewJobAddress("");
-      }
-    } catch (err) {
-      console.error("[Jobs] save error", err);
-      // Handle duplicate job_code nicely
-      if (String(err.message).toLowerCase().includes("duplicate")) {
-        setError("That Job Code already exists.");
-      } else {
-        setError(err.message || "Failed to save job.");
-      }
-    } finally {
-      setSaving(false);
-    }
-  }
-
   return (
-    <div className="bg-white rounded-2xl shadow-card p-6 relative">
-      {/* Header */}
-      <div className="flex items-center justify-between gap-4 mb-2">
+    <div className="bg-white rounded-2xl shadow-card p-6">
+      <div className="flex items-center justify-between gap-3 mb-4">
         <div>
-          <h2 className="text-2xl font-semibold text-ink">Jobs</h2>
-          <p className="text-sm text-subink">
+          <h1 className="text-2xl font-semibold">Jobs</h1>
+          <p className="text-subink">
             Browse all jobs. Click a job to view its report folders.
           </p>
         </div>
 
-        <div className="flex items-center gap-3 w-full sm:w-auto">
+        <div className="flex items-center gap-3">
           <input
             type="text"
             value={q}
             onChange={(e) => setQ(e.target.value)}
-            placeholder="Search job code or address…"
-            className="hidden sm:block rounded-lg border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent w-80"
+            placeholder="Search job code or address..."
+            className="w-[360px] rounded-lg border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent"
           />
-          <button
-            onClick={() => setShowAdd(true)}
-            className="rounded-lg bg-accent text-white px-4 py-2 hover:opacity-90 transition"
-            title="Add a job"
-          >
-            Add Job
-          </button>
+          {/* Allow adding when logged in – RLS still enforces server rules */}
+          {user && (
+            <button
+              onClick={() => setShowAdd(true)}
+              className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition"
+            >
+              Add Job
+            </button>
+          )}
         </div>
       </div>
 
-      {/* Body */}
       {loading ? (
-        <div className="mt-6 space-y-3">
-          {[0, 1, 2].map((i) => (
-            <div
-              key={i}
-              className="rounded-xl border border-gray-200 bg-white shadow-sm p-4 flex items-center gap-4 animate-pulse"
-            >
-              <div className="w-12 h-12 rounded-xl bg-gray-200" />
-              <div className="flex-1 space-y-2">
-                <div className="h-4 bg-gray-200 rounded w-2/5" />
-                <div className="h-3 bg-gray-200 rounded w-3/5" />
-              </div>
-              <div className="h-6 bg-gray-200 rounded w-20" />
-              <div className="h-9 bg-gray-200 rounded w-24" />
-            </div>
-          ))}
+        <div className="space-y-4">
+          <Skeleton />
+          <Skeleton />
+          <Skeleton />
         </div>
       ) : filtered.length === 0 ? (
-        <div className="mt-8 text-subink">No jobs found.</div>
+        <div className="text-subink">No jobs found.</div>
       ) : (
-        <div className="mt-4 space-y-3">
-          {filtered.map(({ job_code, address, report_count }) => (
-            <JobCard
-              key={job_code}
-              job={job_code}
-              address={address}
-              count={report_count || 0}
-              to={`/jobs/${encodeURIComponent(job_code)}`}
-            />
+        <ul className="divide-y divide-gray-100">
+          {filtered.map((j) => (
+            <li key={j.id} className="py-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="font-medium text-ink">{j.job_code}</div>
+                  <div className="text-subink">{j.address}</div>
+                </div>
+                <Link
+                  to={`/jobs/${encodeURIComponent(j.job_code)}`}
+                  className="rounded-lg border border-gray-300 px-3 py-1.5 hover:bg-gray-50"
+                >
+                  View
+                </Link>
+              </div>
+            </li>
           ))}
-        </div>
+        </ul>
       )}
 
-      {/* Add Job Modal */}
       {showAdd && (
-        <div className="fixed inset-0 z-40 bg-black/30 flex items-start justify-center pt-24">
-          <div className="bg-white rounded-2xl shadow-xl w-[92%] max-w-md p-6">
-            <h3 className="text-xl font-semibold text-ink">Add Job</h3>
-            <p className="text-sm text-subink mb-4">
-              Enter the Job Code and the Site Address.
-            </p>
-
-            <form onSubmit={handleSaveJob} className="space-y-3">
-              <div>
-                <label className="block text-sm text-subink mb-1">
-                  Job Code (e.g. BBN.4310)
-                </label>
-                <input
-                  value={newJobCode}
-                  onChange={(e) => setNewJobCode(e.target.value)}
-                  className="block w-full rounded-lg border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent"
-                  placeholder="BBN.XXXX"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm text-subink mb-1">
-                  Site Address
-                </label>
-                <input
-                  value={newJobAddress}
-                  onChange={(e) => setNewJobAddress(e.target.value)}
-                  className="block w-full rounded-lg border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent"
-                  placeholder="123 Example St, Suburb, State 4000"
-                />
-              </div>
-
-              {error && <div className="text-sm text-red-600">{error}</div>}
-
-              <div className="flex items-center justify-end gap-2 pt-2">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowAdd(false);
-                    setNewJobCode("");
-                    setNewJobAddress("");
-                    setError("");
-                  }}
-                  className="rounded-lg border border-gray-300 px-3 py-2 hover:bg-gray-50"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={saving}
-                  className="rounded-lg bg-accent text-white px-4 py-2 hover:opacity-90 transition disabled:opacity-50"
-                >
-                  {saving ? "Saving…" : "Save Job"}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
+        <AddJobModal
+          onClose={() => setShowAdd(false)}
+          onSaved={() => {
+            setShowAdd(false);
+            loadJobs();
+          }}
+        />
       )}
     </div>
   );
 }
 
-function JobCard({ job, address, count, to }) {
+function AddJobModal({ onClose, onSaved }) {
+  const [jobCode, setJobCode] = useState("");
+  const [address, setAddress] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  async function save() {
+    if (!jobCode.trim() || !address.trim()) {
+      alert("Please enter both Job Code and Site Address.");
+      return;
+    }
+    setSaving(true);
+    const payload = {
+      job_code: jobCode.trim(),
+      address: address.trim(),
+    };
+
+    const { error } = await supabase.from("jobs").insert(payload);
+    if (error) {
+      alert(`Unable to save job: ${error.message}`);
+      setSaving(false);
+      return;
+    }
+    onSaved();
+  }
+
   return (
-    <div className="group rounded-xl border border-gray-200 bg-white shadow-sm hover:shadow-cardHover transition p-4 flex items-center gap-4">
-      {/* Icon bubble */}
-      <div className="relative">
-        <div className="w-12 h-12 rounded-xl bg-gray-900 text-white grid place-items-center">
-          <FolderIcon className="w-7 h-7 opacity-90" />
+    <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
+      <div className="w-full max-w-lg bg-white rounded-2xl shadow-card p-6">
+        <h2 className="text-xl font-semibold mb-4">Add Job</h2>
+
+        <label className="block mb-2 text-sm font-medium text-subink">
+          Job Code (e.g. BBN.4310)
+        </label>
+        <input
+          value={jobCode}
+          onChange={(e) => setJobCode(e.target.value)}
+          className="mb-4 block w-full rounded-lg border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent"
+          placeholder="BBN.XXXX"
+        />
+
+        <label className="block mb-2 text-sm font-medium text-subink">
+          Site Address
+        </label>
+        <input
+          value={address}
+          onChange={(e) => setAddress(e.target.value)}
+          className="mb-6 block w-full rounded-lg border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent"
+          placeholder="123 Example Street, City, State, Postcode"
+        />
+
+        <div className="flex items-center justify-end gap-3">
+          <button
+            onClick={onClose}
+            className="rounded-lg border border-gray-300 px-4 py-2 hover:bg-gray-50"
+            disabled={saving}
+          >
+            Cancel
+          </button>
+          <button
+            onClick={save}
+            disabled={saving}
+            className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition disabled:opacity-60"
+          >
+            {saving ? "Saving..." : "Save Job"}
+          </button>
         </div>
       </div>
-
-      {/* Text */}
-      <div className="flex-1 min-w-0">
-        <div className="text-[15px] font-semibold text-ink truncate">
-          {job} — {address}
-        </div>
-        <div className="text-xs text-subink mt-0.5">{count} file(s)</div>
-      </div>
-
-      {/* CTA */}
-      <Link
-        to={to}
-        className="ml-2 bg-accent text-white px-4 py-2 rounded-lg hover:opacity-90 transition whitespace-nowrap"
-      >
-        View
-      </Link>
     </div>
   );
 }
