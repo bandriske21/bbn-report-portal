@@ -1,72 +1,8 @@
 // src/components/Layout.jsx
-import { Link, useNavigate, useLocation } from "react-router-dom";
-import { useAuth } from "../lib/AuthContext";
-import { supabase } from "../lib/supabase";
-// in src/components/Layout.jsx
 import { useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate, useLocation } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 import { useAuth } from "../lib/AuthContext";
-
-function Header() {
-  const { user } = useAuth();
-
-  return (
-    <div className="ml-auto">
-      {user ? (
-        <div className="flex items-center gap-3">
-          <span className="text-sm text-subink truncate max-w-[220px]">
-            {user.email}
-          </span>
-          <button
-            className="rounded-lg border border-gray-300 px-3 py-1.5 hover:bg-gray-50"
-            onClick={async () => {
-              await supabase.auth.signOut();
-              window.location.hash = "/login";
-            }}
-          >
-            Logout
-          </button>
-        </div>
-      ) : (
-        <a
-          href="#/login"
-          className="rounded-lg bg-accent text-white px-4 py-2 hover:opacity-90"
-        >
-          Login
-        </a>
-      )}
-    </div>
-  );
-}
-
-
-export default function Layout({ children }) {
-  const navigate = useNavigate();
-
-  // GLOBAL TOKEN CONSUMER: runs on every route once
-  useEffect(() => {
-    const hash = window.location.hash.startsWith("#")
-      ? window.location.hash.slice(1)
-      : "";
-    const qp = new URLSearchParams(hash);
-    const access_token = qp.get("access_token");
-    const refresh_token = qp.get("refresh_token");
-
-    async function consume() {
-      if (access_token && refresh_token) {
-        await supabase.auth.setSession({ access_token, refresh_token });
-        // Clean the URL & send user into app
-        window.history.replaceState({}, "", `${window.location.origin}/#/client`);
-        navigate("/client", { replace: true });
-      }
-    }
-    consume();
-  }, [navigate]);
-
-  // ...rest of your layout (header/sidebar/etc)
-}
-
 
 function NavLink({ to, label, active }) {
   return (
@@ -88,6 +24,26 @@ export default function Layout({ children }) {
 
   const canUpload = role === "admin" || role === "uploader";
 
+  // GLOBAL TOKEN CONSUMER: runs once on load, on any route
+  useEffect(() => {
+    const hash = window.location.hash.startsWith("#")
+      ? window.location.hash.slice(1)
+      : "";
+    const qp = new URLSearchParams(hash);
+    const access_token = qp.get("access_token");
+    const refresh_token = qp.get("refresh_token");
+
+    async function consume() {
+      if (access_token && refresh_token) {
+        await supabase.auth.setSession({ access_token, refresh_token });
+        // Clean URL and go to the Client Home
+        window.history.replaceState({}, "", `${window.location.origin}/#/client`);
+        navigate("/client", { replace: true });
+      }
+    }
+    consume();
+  }, [navigate]);
+
   async function handleLogout() {
     await supabase.auth.signOut();
     navigate("/login");
@@ -105,17 +61,12 @@ export default function Layout({ children }) {
             </span>
           </Link>
 
-          <div>
-            {!user ? (
-              <Link
-                to="/login"
-                className="bg-blue-600 text-white px-4 py-1.5 rounded hover:bg-blue-700 transition"
-              >
-                Login
-              </Link>
-            ) : (
+          <div className="ml-auto">
+            {user ? (
               <div className="flex items-center gap-3">
-                <span className="text-sm text-gray-700">{user.email}</span>
+                <span className="text-sm text-gray-700 truncate max-w-[240px]">
+                  {user.email}
+                </span>
                 <span className="text-xs bg-gray-100 text-ink px-2 py-1 rounded-lg capitalize">
                   {loading ? "…" : role || "client"}
                 </span>
@@ -126,6 +77,13 @@ export default function Layout({ children }) {
                   Logout
                 </button>
               </div>
+            ) : (
+              <Link
+                to="/login"
+                className="bg-blue-600 text-white px-4 py-1.5 rounded hover:bg-blue-700 transition"
+              >
+                Login
+              </Link>
             )}
           </div>
         </div>
@@ -143,13 +101,9 @@ export default function Layout({ children }) {
               active={pathname === "/jobs" || pathname.startsWith("/jobs/")}
             />
             <NavLink to="/reports" label="All Reports" active={pathname === "/reports"} />
-
-            {/* Upload only for admin/uploader */}
             {user && canUpload && (
               <NavLink to="/" label="Upload" active={pathname === "/"} />
             )}
-
-            {/* Hide Login when signed in */}
             {!user && <NavLink to="/login" label="Login" active={pathname === "/login"} />}
           </nav>
         </aside>
