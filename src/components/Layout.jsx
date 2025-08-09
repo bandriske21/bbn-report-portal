@@ -1,6 +1,6 @@
 // src/components/Layout.jsx
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useEffect } from "react";
-import { Link, useNavigate, useLocation } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 import { useAuth } from "../lib/AuthContext";
 
@@ -22,21 +22,25 @@ export default function Layout({ children }) {
   const { pathname } = useLocation();
   const { user, role, loading } = useAuth();
 
-  const canUpload = role === "admin" || role === "uploader";
-
-  // GLOBAL TOKEN CONSUMER: runs once on load, on any route
+  // --- MAGIC LINK TOKEN CONSUMER ---
   useEffect(() => {
     const hash = window.location.hash.startsWith("#")
-      ? window.location.hash.slice(1)
+      ? window.location.hash.slice(1) // remove leading '#'
       : "";
-    const qp = new URLSearchParams(hash);
+
+    // support both `#/client#access_token=...` and `#access_token=...`
+    const parts = hash.split("#");
+    const qp = new URLSearchParams(parts.length > 1 ? parts[1] : parts[0]);
+
     const access_token = qp.get("access_token");
     const refresh_token = qp.get("refresh_token");
 
     async function consume() {
       if (access_token && refresh_token) {
+        console.log("[Layout] consuming tokens from URL");
         await supabase.auth.setSession({ access_token, refresh_token });
-        // Clean URL and go to the Client Home
+
+        // Clean URL and land on /client
         window.history.replaceState({}, "", `${window.location.origin}/#/client`);
         navigate("/client", { replace: true });
       }
@@ -44,9 +48,11 @@ export default function Layout({ children }) {
     consume();
   }, [navigate]);
 
+  const canUpload = role === "admin" || role === "uploader";
+
   async function handleLogout() {
     await supabase.auth.signOut();
-    navigate("/login");
+    navigate("/login", { replace: true });
   }
 
   return (
@@ -61,10 +67,17 @@ export default function Layout({ children }) {
             </span>
           </Link>
 
-          <div className="ml-auto">
-            {user ? (
+          <div>
+            {!user ? (
+              <Link
+                to="/login"
+                className="bg-blue-600 text-white px-4 py-1.5 rounded hover:bg-blue-700 transition"
+              >
+                Login
+              </Link>
+            ) : (
               <div className="flex items-center gap-3">
-                <span className="text-sm text-gray-700 truncate max-w-[240px]">
+                <span className="text-sm text-gray-700 truncate max-w-[220px]">
                   {user.email}
                 </span>
                 <span className="text-xs bg-gray-100 text-ink px-2 py-1 rounded-lg capitalize">
@@ -77,13 +90,6 @@ export default function Layout({ children }) {
                   Logout
                 </button>
               </div>
-            ) : (
-              <Link
-                to="/login"
-                className="bg-blue-600 text-white px-4 py-1.5 rounded hover:bg-blue-700 transition"
-              >
-                Login
-              </Link>
             )}
           </div>
         </div>
@@ -101,9 +107,11 @@ export default function Layout({ children }) {
               active={pathname === "/jobs" || pathname.startsWith("/jobs/")}
             />
             <NavLink to="/reports" label="All Reports" active={pathname === "/reports"} />
+
             {user && canUpload && (
               <NavLink to="/" label="Upload" active={pathname === "/"} />
             )}
+
             {!user && <NavLink to="/login" label="Login" active={pathname === "/login"} />}
           </nav>
         </aside>
