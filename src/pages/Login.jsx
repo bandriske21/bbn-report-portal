@@ -1,3 +1,4 @@
+// src/pages/Login.jsx
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "../lib/supabase";
@@ -11,7 +12,6 @@ export default function Login() {
   const [status, setStatus] = useState("idle"); // idle | sending | sent | error
   const [errMsg, setErrMsg] = useState("");
 
-  // If already signed in, skip login
   useEffect(() => {
     if (user) navigate("/client", { replace: true });
   }, [user, navigate]);
@@ -32,11 +32,7 @@ export default function Login() {
 
       const { error } = await supabase.auth.signInWithOtp({
         email,
-        options: {
-          emailRedirectTo: redirectTo,
-          // uncomment if you want auto-provision:
-          // shouldCreateUser: true,
-        },
+        options: { emailRedirectTo: redirectTo },
       });
 
       if (error) {
@@ -50,9 +46,7 @@ export default function Login() {
     } catch (err) {
       console.error("[Login] unexpected error:", err);
       setStatus("error");
-      setErrMsg(
-        err?.message || "Unexpected error sending magic link. Please try again."
-      );
+      setErrMsg(err?.message || "Unexpected error sending magic link.");
     }
   }
 
@@ -96,7 +90,7 @@ export default function Login() {
         <div className="mt-4 text-sm text-red-600">{errMsg}</div>
       )}
 
-      {/* Helpful hint */}
+      {/* This line helps you verify the new build is live */}
       <div className="mt-6 text-xs text-subink">
         Tip: Your redirect is{" "}
         <code className="px-1 py-0.5 bg-gray-100 rounded">
