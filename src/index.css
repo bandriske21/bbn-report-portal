@@ -1,7 +1,11 @@
 @tailwind base;
 @tailwind components;
+<<<<<<< HEAD
 @tailwind utilities;
 
 /* Smooth fades for page content */
 .fade-in { @apply opacity-0 animate-[fadeIn_0.5s_ease-out_forwards]; }
 @keyframes fadeIn { to { opacity: 1 } }
+=======
+@tailwind utilities;
+>>>>>>> c0be2d7 (Initial commit: routing, auth, upload, jobs fixes)

@@ -1,5 +1,6 @@
 /** @type {import('tailwindcss').Config} */
 export default {
+<<<<<<< HEAD
   content: ["./index.html","./src/**/*.{js,ts,jsx,tsx}"],
   theme: {
     extend: {
@@ -19,8 +20,23 @@ export default {
       },
       borderRadius: {
         xl2: "1rem" // slightly larger than rounded-xl
+=======
+  content: [
+    "./index.html",
+    "./src/**/*.{js,ts,jsx,tsx}",
+  ],
+  theme: {
+    extend: {
+      colors: {
+        bbnNavy: '#0D1B2A',
+        bbnOrange: '#E36A33'
+>>>>>>> c0be2d7 (Initial commit: routing, auth, upload, jobs fixes)
       }
     },
   },
   plugins: [],
+<<<<<<< HEAD
 }
+=======
+}
+>>>>>>> c0be2d7 (Initial commit: routing, auth, upload, jobs fixes)
