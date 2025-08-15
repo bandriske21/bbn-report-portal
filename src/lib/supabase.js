@@ -9,3 +9,9 @@ if (!supabaseUrl || !supabaseAnonKey) {
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey);
 console.log("Supabase client initialized for DB and Storage.");
+// Expose for quick debugging in the browser console
+try {
+  if (typeof window !== "undefined") {
+    window._sb = supabase;
+  }
+} catch {}

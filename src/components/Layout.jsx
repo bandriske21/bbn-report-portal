@@ -33,7 +33,9 @@ export default function Layout({ children }) {
 
     // Support double-hash by taking the part after the second '#', if present
     const parts = fullHash.split("#");
-    const tokenFragment = parts.length > 1 ? parts[1] : parts[0];
+    let tokenFragment = parts.length > 1 ? parts[1] : parts[0];
+    // Normalize cases like "/access_token=…" coming from "#/access_token=…"
+    if (tokenFragment.startsWith("/")) tokenFragment = tokenFragment.slice(1);
 
     const qp = new URLSearchParams(tokenFragment);
     const access_token = qp.get("access_token");
